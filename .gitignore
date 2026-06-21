@@ -1,0 +1,29 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+
+## Unity
+Library/
+Temp/
+Logs/
+Build/
+Builds/
+UserSettings/
+*.csproj
+*.sln
+
+## Database
+*.db
+*.db-shm
+*.db-wal
+
+## Logs
+logs/
+
+## IDE
+.vs/
+.idea/
+*.swp
+.DS_Store

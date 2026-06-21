@@ -1,0 +1,1305 @@
+--- at 1429 ---
+ic schedule overrides, NPC↔NPC chat, gossip | 10–15 |
+| **P3** | Relationships, reputation, quests, communal projects | 15–20 |
+| **P4** | Personality depth, children/elder behaviors, weather/events, economy loops | 20+ |
+
+---
+
+## 1. NPC Architecture
+
+### 1.1 Per-NPC component stack
+
+Each NPC is a server entity with these components:
+
+```
+NpcEntity
+├── NpcIdentity        (id, role, home, workplace)
+├── NpcNeeds           (hunger, energy, social, ...)
+├── NpcSchedule        (daily template + overrides)
+├── NpcPersonality     (trait weights)
+├── NpcRelationships   (map: entityId → RelationshipState)
+├── NpcMemory          (recent events, gossip queue)
+├── NpcInventory       (personal + role resources)
+├── NpcStateMachine    (coarse life phase)
+├── NpcUtilityBrain    (action scoring within phase)
+├── NpcPathAgent       (navigation, current activity)
+└── NpcSyncState       (client replication bundle)
+```
+
+### 1.2 Hybrid AI model
+
+**State machine (coarse)** — answers *“What kind of moment is this NPC in?”*
+
+| State | Entry | Exit |
+|-------|--------|------|
+| `Sleeping` | Schedule block + low energy | Wake time or interrupt |
+| `Routine` | Default scheduled activity | Override wins or block ends |
+| `NeedDriven` | Critical need crosses threshold | Need satisfied or timeout |
+| `Social` | Conversation / group activity started | Activity ends |
+| `Reacting` | Player action, event, danger | Reaction script completes |
+| `Communal` | Joined village project | Shift ends or need interrupt |
+| `Unavailable` | Story gate, injury, festival role | Designer/scripted unlock |
+
+**Utility AI 
+
+--- at 2766 ---
+rted | Activity ends |
+| `Reacting` | Player action, event, danger | Reaction script completes |
+| `Communal` | Joined village project | Shift ends or need interrupt |
+| `Unavailable` | Story gate, injury, festival role | Designer/scripted unlock |
+
+**Utility AI (fine)** — within `Routine`, `NeedDriven`, and `Social`, scores candidate actions every decision tick.
+
+**Behavior trees (atomic)** — only for *how* to execute a chosen action (path to barn → play anim → deposit wheat). Keeps execution reliable; BT leaves are reusable across NPCs.
+
+```
+Every decision tick:
+  1. State machine evaluates transitions (interrupts > schedule)
+  2. If in Routine/NeedDriven/Social → UtilityBrain picks best action
+  3. If action changed → Behavior tree runs until complete or preempted
+  4. Needs decay; relationships/schedules update on events
+```
+
+### 1.3 Decision-making every tick
+
+Not every NPC runs full AI every server frame.
+
+**Tick tiers**
+
+| Tier | Who | Rate | Work |
+|------|-----|------|------|
+| **Hot** | NPCs within player AOI (e.g. 64m), in conversation, in combat/event | Every 0.5–1 s | Full SM + utility + path |
+| **Warm** | Same zone, outside AOI | Every 2–4 s | Needs decay + schedule check; utility if off-routine |
+| **Cold** | Distant / unloaded slice | Every 30–60 s | Abstract simulation only |
+
+**Abstract simulation (cold tier)**  
+No pathfinding. Resolve schedule block → apply productivity/consumption formulas → update needs and inventory. On player approach, **hydrate** to full spatial state from abstract record.
+
+**Utility scoring (simplified)**
+
+```text
+score(action) = 
+
+--- at 4978 ---
+nergy &lt; 10%) → `NeedDriven`  
+3. Player interaction lock → pause locomotion BT, face player  
+4. Communal project call (P3) → optional join if utility agrees  
+
+---
+
+## 2. Needs System
+
+### 2.1 Need definitions
+
+| Need | Range | What it represents | Satisfied by |
+|------|-------|-------------------|--------------|
+| **Hunger** | 0–100 | Food | Eat at home/tavern, snack, gift food |
+| **Energy** | 0–100 | Rest / stamina | Sleep, sit, nap, drink tea |
+| **Social** | 0–100 | Company | Chat, group work, festival, player talk |
+| **Safety** | 0–100 | Physical security | Indoors, near guards, after threat ends |
+| **Comfort** | 0–100 | Warmth, dryness | Shelter, fire, good weather |
+| **Purpose** | 0–100 | Meaningful work | Job tasks, communal project, helping others |
+| **Fun** | 0–100 | Play / variety | Hobbies, child play, festival (Child higher weight) |
+| **Health** | 0–100 | Sickness/injury | Rest, medicine, healer (P4) |
+
+**P1:** Hunger, Energy, Social, Safety  
+**P2:** + Comfort, Purpose  
+**P3+:** + Fun, Health  
+
+### 2.2 Decay and recovery
+
+Decay runs on **game-time minutes**, scaled by activity:
+
+```text
+decayPerGameMinute(need) = baseDecay[need]
+                         × activityMultiplier(currentAction)
+                         × traitMultiplier(personality)
+                         × environmentMultiplier(weather, season)
+```
+
+**Example base decay (per in-game hour, idle outdoors)**
+
+| Need | Base Δ/hour | Notes |
+|------|-------------|-------|
+| Hunger | −8 | Faster when doing physical labor |
+| Energy | −6 (−12 labor) | Sleep block restores +40/hour |
+| Socia
+
+--- at 5621 ---
+armth, dryness | Shelter, fire, good weather |
+| **Purpose** | 0–100 | Meaningful work | Job tasks, communal project, helping others |
+| **Fun** | 0–100 | Play / variety | Hobbies, child play, festival (Child higher weight) |
+| **Health** | 0–100 | Sickness/injury | Rest, medicine, healer (P4) |
+
+**P1:** Hunger, Energy, Social, Safety  
+**P2:** + Comfort, Purpose  
+**P3+:** + Fun, Health  
+
+### 2.2 Decay and recovery
+
+Decay runs on **game-time minutes**, scaled by activity:
+
+```text
+decayPerGameMinute(need) = baseDecay[need]
+                         × activityMultiplier(currentAction)
+                         × traitMultiplier(personality)
+                         × environmentMultiplier(weather, season)
+```
+
+**Example base decay (per in-game hour, idle outdoors)**
+
+| Need | Base Δ/hour | Notes |
+|------|-------------|-------|
+| Hunger | −8 | Faster when doing physical labor |
+| Energy | −6 (−12 labor) | Sleep block restores +40/hour |
+| Social | −5 | Introverts (trait) −3 |
+| Safety | −2 | Spikes −30 on threat event |
+| Comfort | −4 outdoors in rain | Near zero indoors |
+| Purpose | −3 if idle | +20 per completed work shift |
+| Fun | −4 | Children −6 |
+
+**Threshold bands**
+
+| Band | Range | Behavior |
+|------|-------|----------|
+| Fine | 60–100 | Personality dominates |
+| Low | 30–59 | Utility adds need bonus |
+| Critical | 0–29 | Can preempt schedule (except Elder sleep, Child supervised) |
+| Starving / Exhausted | 0 | Debuff: slow work, irritable dialogue, skip optional social |
+
+### 2.3 Need → behavior priority
+
+Utility maps needs to action families:
+
+```text
+Hunger  → 
+
+--- at 7371 ---
+nd → acquaintance → player)
+Safety  → seek_shelter / flee / call_elder
+Purpose → resume_work / join_communal / help_npc
+```
+
+**Weight example** at Social = 25, Hunger = 70, schedule = “Work field”:
+
+- `continue_work`: schedule 50 + purpose 20 − hunger penalty 10 = **60**
+- `eat_lunch`: hunger 45 + schedule lunch block 30 = **75** → wins
+
+---
+
+## 3. Daily Schedule System
+
+### 3.1 Schedule structure
+
+Each NPC has a **WeeklyScheduleTemplate** (usually Mon–Sun identical in P1) made of **blocks**:
+
+```json
+{
+  "npcId": "farmer_elsie",
+  "blocks": [
+    { "start": "06:00", "end": "06:30", "activity": "WakeAtHome", "location": "home" },
+    { "start": "06:30", "end": "07:00", "activity": "Breakfast", "location": "home" },
+    { "start": "07:00", "end": "12:00", "activity": "WorkFarm", "location": "farm_plot" },
+    { "start": "12:00", "end": "13:00", "activity": "LunchSocial", "location": "tavern" },
+    { "start": "13:00", "end": "17:00", "activity": "WorkFarm", "location": "farm_plot" },
+    { "start": "17:00", "end": "18:00", "activity": "Errands", "location": "market" },
+    { "start": "18:00", "end": "20:00", "activity": "FreeTime", "location": "village_green" },
+    { "start": "20:00", "end": "06:00", "activity": "Sleep", "location": "home" }
+  ]
+}
+```
+
+**Activities** bind to: target location(s), BT root, need effects, productivity hooks, and valid interrupts.
+
+### 3.2 Dynamic schedule overrides
+
+**Override stack** (highest wins):
+
+1. Scripted story / quest lock  
+2. Emergency (fire, injury)  
+3. Critical need  
+4. Player appointment (`meet_player_14:00`)  
+5. Event (festiva
+
+--- at 8890 ---
+. Critical need  
+4. Player appointment (`meet_player_14:00`)  
+5. Event (festival, storm day)  
+6. Communal project shift  
+7. Personality habit (Merchant opens shop early)  
+8. Base template  
+
+Overrides are **time-bounded** objects:
+
+```json
+{
+  "source": "weather",
+  "reason": "heavy_rain",
+  "replace": [{ "start": "07:00", "end": "12:00", "activity": "WorkShed", "location": "barn" }],
+  "date": "day_142"
+}
+```
+
+**Modifiers (not full replace)**  
+- Rain: outdoor work → indoor craft/maintenance  
+- Low village food stock: Farmer extends WorkFarm, skips FreeTime  
+- High friendship player visit: +Social recovery, optional `ChatWithPlayer` block  
+- Gossip event: Elder adds `HoldCourt` at green  
+
+### 3.3 Example daily schedules (in-game day)
+
+**Farmer (Elsie)** — anchors food supply  
+
+| Time | Activity | Location |
+|------|----------|----------|
+| 06:00–06:30 | Wake, tend chickens | Home |
+| 06:30–07:00 | Breakfast | Home |
+| 07:00–12:00 | Plant/harvest | Farm plots |
+| 12:00–13:00 | Lunch + tavern chat | Tavern |
+| 13:00–17:00 | Farm work | Farm |
+| 17:00–17:30 | Deliver produce | Market stall |
+| 17:30–19:00 | Free / water crops | Village |
+| 19:00–20:00 | Supper | Home |
+| 20:00–06:00 | Sleep | Home |
+
+**Lumberjack (Tom)** — physical, early riser  
+
+| Time | Activity | Location |
+|------|----------|----------|
+| 05:30–06:00 | Wake | Home |
+| 06:00–06:30 | Hearty breakfast | Home |
+| 06:30–11:30 | Chop forest (rotates cells) | Forest zone |
+| 11:30–12:30 | Lunch bench | Forest edge |
+| 12:30–16:30 | Chop / haul logs | Forest → mill |
+| 16:30–17:30 | Tool maintenance | 
+
+--- at 11202 ---
+morning, tea | Home |
+| 08:00–10:00 | “Office hours” advice | Bench by well |
+| 10:00–11:00 | Visit communal sites | Village |
+| 11:00–12:00 | Read / records | Home |
+| 12:00–13:30 | Lunch circle | Tavern |
+| 13:30–15:00 | Nap (Energy recovery) | Home |
+| 15:00–17:00 | Mediate disputes, project planning | Town hall |
+| 17:00–19:00 | Evening stories | Green |
+| 19:00–07:00 | Sleep | Home |
+
+**Child (Lily)** — supervised, play-weighted  
+
+| Time | Activity | Location |
+|------|----------|----------|
+| 07:30–08:00 | Wake with parent NPC | Home |
+| 08:00–08:30 | Breakfast | Home |
+| 08:30–12:00 | “School” / chores (light) | Green / home |
+| 12:00–13:00 | Lunch | Home |
+| 13:00–16:00 | Play supervised | Green (adult within 20m) |
+| 16:00–17:00 | Follow parent errand | Varies |
+| 17:00–19:00 | Family supper | Home |
+| 19:00–07:30 | Sleep | Home |
+
+**Child safety rule:** if no supervising adult in range → override `SeekAdult` (utility max Safety + Social toward guardian).
+
+---
+
+## 4. Personality & Relationship System
+
+### 4.1 Personality traits
+
+Stored as **0.0–1.0 weights**; affect utility modifiers and dialogue tone.
+
+| Trait | High behavior | Low behavior |
+|-------|---------------|--------------|
+| **Industrious** | Longer work, lower Purpose decay | More FreeTime |
+| **Sociable** | Seeks chat, high Social decay | Solo activities |
+| **Neurotic** | Faster Safety decay, flee sooner | Calm under threat |
+| **Agreeable** | Gift, help communal | Demanding dialogue |
+| **Curious** | Investigates player actions | Sticks to route |
+| **Frugal** | Hoards, slow to spend | Generous trad
+
+--- at 12554 ---
+ **Neurotic** | Faster Safety decay, flee sooner | Calm under threat |
+| **Agreeable** | Gift, help communal | Demanding dialogue |
+| **Curious** | Investigates player actions | Sticks to route |
+| **Frugal** | Hoards, slow to spend | Generous trading |
+| **Traditional** | Follows schedule strictly | Adapts to overrides |
+| **Ambitious** | Joins projects, seeks promotion hooks | Content |
+
+**Example:** Sociable 0.9 Farmer skips solo lunch at home → utility favors tavern even when Hunger is only 45.
+
+### 4.2 Relationship model
+
+**NPC ↔ NPC and NPC ↔ Player** share one structure:
+
+```text
+RelationshipState {
+  affinity:     -100..+100   // like/dislike
+  trust:        0..100       // rely on them
+  familiarity:  0..100       // how well they know each other
+  romance:      0..100       // optional, P4
+  tags:         ["neighbor", "customer", "rival"]
+}
+```
+
+**Derived attitude** (for dialogue & utility):
+
+```text
+attitude = 0.5 * affinity + 0.3 * trust + 0.2 * familiarity
+```
+
+### 4.3 Relationship changes
+
+| Event | Δ affinity | Δ trust | Δ familiarity |
+|-------|------------|---------|---------------|
+| Daily small talk | +1 | — | +2 |
+| Gift (liked) | +5 | +2 | +1 |
+| Gift (disliked) | −3 | — | +1 |
+| Complete quest for NPC | +8 | +10 | +5 |
+| Gossip (negative, believed) | −6 | −4 | +3 |
+| Witness player theft | −15 | −20 | +5 |
+| Help during event | +12 | +15 | +5 |
+| Broken promise (quest fail) | −10 | −25 | +2 |
+
+**Decay:** familiarity slowly rises toward cap with any contact; affinity drifts toward 0 at −0.1/day without interaction (optional).
+
+**NPC choice of conversati
+
+--- at 14807 ---
+ with distortion chance  
+- High affinity → invite to lunch block overlap  
+
+**Group activities**
+- Communal lunch at tavern (12:00–13:00 many schedules overlap)  
+- Festival dances, project build sites  
+- Elder “court” gathers 2–4 NPCs with dispute tag  
+
+**Gossip model**
+
+```text
+GossipItem { subjectId, factType, truthValue, sourceId, expiryDay }
+```
+
+On converse, roll `spreadChance = familiarity * agreeableness`. Receiver stores with `believedTruth = truthValue ± noise`. Affects player reputation and merchant prices indirectly.
+
+### 5.2 Economic contribution
+
+Each role has **production/consumption hooks** tied to schedule activities:
+
+| Role | Produces | Consumes | Work activity |
+|------|----------|----------|---------------|
+| Farmer | wheat, vegetables, eggs | tools, cloth | WorkFarm |
+| Lumberjack | logs, planks | food, ale | ChopForest |
+| Merchant | — (margin on trade) | stock from NPCs/players | Trade |
+| Elder | — | — | boosts project approval (P3) |
+| Child | — | food | light chores (tiny yield P4) |
+
+**Abstract economy (cold NPCs):**
+
+```text
+hourlyYield = baseYield * skill * energyFactor * weatherFactor * toolQuality
+hourlyConsumption = needBasedFood + homeFuel (winter)
+```
+
+Village **stockpiles** (granary, lumber yard) receive deposits from `DeliverProduce` blocks. Merchant pulls from stockpiles to shop inventory with markup rules.
+
+### 5.3 Communal project join logic (P3)
+
+Village posts `CommunalProject { type, resourcesNeeded, slots, deadline }`.
+
+NPC join utility:
+
+```text
+joinScore = purposeNeedBonus
+          + industriousTrait * 20
+          + elderEnd
+
+--- at 16086 ---
+eliverProduce` blocks. Merchant pulls from stockpiles to shop inventory with markup rules.
+
+### 5.3 Communal project join logic (P3)
+
+Village posts `CommunalProject { type, resourcesNeeded, slots, deadline }`.
+
+NPC join utility:
+
+```text
+joinScore = purposeNeedBonus
+          + industriousTrait * 20
+          + elderEndorsement * 15
+          + relationshipToOrganizer * 0.2
+          + scheduleFreeBlockMatch * 30
+          - energyPenalty
+          - existingWorkCommitment
+```
+
+If `joinScore > 50`, NPC adds override block `CommunalWork` and commits 2–4 hours. Elder Harold often organizes → organizers get trust boost on success.
+
+**Player projects** use same structure; NPCs treat player organizer like NPC with relationship = player village reputation.
+
+---
+
+## 6. Interaction with Players
+
+### 6.1 Reputation layers
+
+| Layer | Scope | Range | Effects |
+|-------|-------|-------|---------|
+| **Personal** | Per NPC | −100..+100 | Dialogue, gifts, quest willingness |
+| **Village** | Global per player | 0..100 | Shop prices, guard tone, project support |
+| **Role** | e.g. “Farmers’ trust” | 0..100 | Role-specific quests |
+
+Village rep aggregates from deeds, gossip, and Elder announcements.
+
+### 6.2 Player approach flow
+
+1. Player enters interaction radius → NPC `Reacting` or schedule pause  
+2. Greeting selected from: `attitude + villageRep + timeOfDay + recentMemory`  
+3. Interaction menu: Talk / Trade / Quest / Gift (gated by familiarity)  
+
+**Low rep:** short replies, refuse quests, call Merchant for “troublemaker” bark  
+**High rep:** hints, discounts, invite to lunch overlap  
+
+--- at 16135 ---
+iles to shop inventory with markup rules.
+
+### 5.3 Communal project join logic (P3)
+
+Village posts `CommunalProject { type, resourcesNeeded, slots, deadline }`.
+
+NPC join utility:
+
+```text
+joinScore = purposeNeedBonus
+          + industriousTrait * 20
+          + elderEndorsement * 15
+          + relationshipToOrganizer * 0.2
+          + scheduleFreeBlockMatch * 30
+          - energyPenalty
+          - existingWorkCommitment
+```
+
+If `joinScore > 50`, NPC adds override block `CommunalWork` and commits 2–4 hours. Elder Harold often organizes → organizers get trust boost on success.
+
+**Player projects** use same structure; NPCs treat player organizer like NPC with relationship = player village reputation.
+
+---
+
+## 6. Interaction with Players
+
+### 6.1 Reputation layers
+
+| Layer | Scope | Range | Effects |
+|-------|-------|-------|---------|
+| **Personal** | Per NPC | −100..+100 | Dialogue, gifts, quest willingness |
+| **Village** | Global per player | 0..100 | Shop prices, guard tone, project support |
+| **Role** | e.g. “Farmers’ trust” | 0..100 | Role-specific quests |
+
+Village rep aggregates from deeds, gossip, and Elder announcements.
+
+### 6.2 Player approach flow
+
+1. Player enters interaction radius → NPC `Reacting` or schedule pause  
+2. Greeting selected from: `attitude + villageRep + timeOfDay + recentMemory`  
+3. Interaction menu: Talk / Trade / Quest / Gift (gated by familiarity)  
+
+**Low rep:** short replies, refuse quests, call Merchant for “troublemaker” bark  
+**High rep:** hints, discounts, invite to lunch overlap  
+
+### 6.3 Quest / request system
+
+**NpcRequest** 
+
+--- at 16515 ---
+energyPenalty
+          - existingWorkCommitment
+```
+
+If `joinScore > 50`, NPC adds override block `CommunalWork` and commits 2–4 hours. Elder Harold often organizes → organizers get trust boost on success.
+
+**Player projects** use same structure; NPCs treat player organizer like NPC with relationship = player village reputation.
+
+---
+
+## 6. Interaction with Players
+
+### 6.1 Reputation layers
+
+| Layer | Scope | Range | Effects |
+|-------|-------|-------|---------|
+| **Personal** | Per NPC | −100..+100 | Dialogue, gifts, quest willingness |
+| **Village** | Global per player | 0..100 | Shop prices, guard tone, project support |
+| **Role** | e.g. “Farmers’ trust” | 0..100 | Role-specific quests |
+
+Village rep aggregates from deeds, gossip, and Elder announcements.
+
+### 6.2 Player approach flow
+
+1. Player enters interaction radius → NPC `Reacting` or schedule pause  
+2. Greeting selected from: `attitude + villageRep + timeOfDay + recentMemory`  
+3. Interaction menu: Talk / Trade / Quest / Gift (gated by familiarity)  
+
+**Low rep:** short replies, refuse quests, call Merchant for “troublemaker” bark  
+**High rep:** hints, discounts, invite to lunch overlap  
+
+### 6.3 Quest / request system
+
+**NpcRequest** types (P2 simple, P3 rich):
+
+| Type | Example |
+|------|---------|
+| Fetch | Bring 10 logs to Tom |
+| Deliver | Take letter to Mira |
+| Repair | Fix fence at farm |
+| Escort | Walk Lily home at dusk |
+| Communal | Donate wood for bridge |
+
+**Generation rules**
+- Trigger: need deficit, stockpile low, event aftermath, relationship &gt; 30  
+- Cooldown per NPC: 1–3 game days  
+- P
+
+--- at 17838 ---
+eliver | Take letter to Mira |
+| Repair | Fix fence at farm |
+| Escort | Walk Lily home at dusk |
+| Communal | Donate wood for bridge |
+
+**Generation rules**
+- Trigger: need deficit, stockpile low, event aftermath, relationship &gt; 30  
+- Cooldown per NPC: 1–3 game days  
+- Priority: Purpose-critical for role &gt; flavor errands  
+
+```text
+questAvailable = roleStress > threshold
+              && playerTrust > minTrust
+              && noActiveQuestFromSameNpc
+```
+
+**Failure:** trust −25, affinity −10; spread negative gossip. **Success:** rep + trust + small gold/item reward; may unlock chain quests.
+
+### 6.4 Reactions to player actions
+
+| Player action | NPC response |
+|---------------|--------------|
+| Gift food when hungry | High affinity burst, thank bark |
+| Steal from shop | Merchant alerts, village rep −, `Reacting` confront |
+| Farm help minigame | Skip abstract work, +relationship, faster stockpile |
+| Attack NPC | Safety panic, flee, permanent trust collapse |
+| Build near home | Curious inspect; Traditional may complain until rep high |
+| Complete communal project | Area-wide affinity bump + festival hook |
+
+Reactions stored in **NpcMemory** (TTL 7–30 days) for future dialogue.
+
+---
+
+## 7. Technical Considerations
+
+### 7.1 Performance targets
+
+Assumptions: dedicated game server, 20–50 players, 20 NPCs full village.
+
+| Technique | Target |
+|-----------|--------|
+| Hot/Warm/Cold tiers | ≤ 8 full AI NPCs per player cluster |
+| Pathfinding | Local navmesh chunks; queue requests max 4/frame |
+| BT execution | Pooling; 1 active BT per hot NPC |
+| Utility candidates | ≤
+
+--- at 18813 ---
+ollapse |
+| Build near home | Curious inspect; Traditional may complain until rep high |
+| Complete communal project | Area-wide affinity bump + festival hook |
+
+Reactions stored in **NpcMemory** (TTL 7–30 days) for future dialogue.
+
+---
+
+## 7. Technical Considerations
+
+### 7.1 Performance targets
+
+Assumptions: dedicated game server, 20–50 players, 20 NPCs full village.
+
+| Technique | Target |
+|-----------|--------|
+| Hot/Warm/Cold tiers | ≤ 8 full AI NPCs per player cluster |
+| Pathfinding | Local navmesh chunks; queue requests max 4/frame |
+| BT execution | Pooling; 1 active BT per hot NPC |
+| Utility candidates | ≤ 12 actions evaluated per tick |
+| Conversation | Max 3 simultaneous dyads per AOI |
+
+**Scale path:** 10 NPCs comfortable on single zone; 30+ with cold abstraction + instanced “story NPCs” only hot when players near.
+
+### 7.2 Persistence
+
+**Save blob per NPC** (DB or world save):
+
+```text
+npcId, position (if hot), currentState, needs vector,
+relationships map (sparse), memory queue, inventory,
+scheduleOverrideStack, activeQuestIds, lastAbstractSimTime
+```
+
+**When to save**
+- Periodic: every 5 min + on graceful shutdown  
+- Event-driven: quest complete, relationship threshold, day rollover  
+- Player logout: no special case — world persists independently  
+
+**Day rollover:** apply daily relationship drift, refresh overrides, reset work quotas, prune expired gossip.
+
+### 7.3 Multiplayer server model
+
+```
+┌─────────────────────────────────────────┐
+│           World Simulation Loop          │
+│  Time → Needs → Schedules → AI tiers     │
+└─────────────────┬────────
+
+--- at 21776 ---
+e**  
+4. **Gossip + dynamic overrides (weather)**  
+5. **Quests + village rep + stockpiles**  
+6. **Communal projects + Elder orchestration**  
+7. **Abstract cold sim + scale tuning**
+
+---
+
+## Initial 10 NPC roster (suggested)
+
+| ID | Role | Notes |
+|----|------|-------|
+| elsie | Farmer | Food anchor |
+| tom | Lumberjack | Wood anchor |
+| mira | Merchant | Economy hub |
+| harold | Elder | Rep + projects |
+| lily | Child | Supervision rules |
+| greta | Innkeeper | Social hub, meals |
+| sam | Blacksmith | Tool economy P3 |
+| nora | Herbalist | Health P4 |
+| ben | Guard | Safety reactions |
+| pip | Bard | Fun, gossip amplifier |
+
+Each uses the same architecture; differences are **data** (schedule, traits, production hooks).
+
+---
+
+If you want this saved into the repo (e.g. `docs/npc-ai-daily-life.md`) or aligned section-by-section with your original Bloomtown HLD, paste that doc or point me at its path and I’ll merge terminology and phase boundaries to match.
+
+--- at 2094 ---
+  Sleeping / Unavailable / Reacting → fixed BT, no utility    │
+│   NeedDriven / Routine / Social / Communal → go to Step 3    │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 3: Build candidate action list (8–15 actions max)      │
+│   - Filter by state, location, locks, cooldowns             │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 4: Utility score each candidate                        │
+│   - Apply modifiers; clamp; add noise (optional)            │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 5: Select winner + hysteresis check                    │
+│   - New action must beat current by MARGIN or wait          │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 6: Dispatch                                            │
+│   - Same action → continue BT                               │
+│   - New action → interrupt policy → start/resume BT         │
+│   - No valid action → Step 7                                │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 7: Fallback ladder 
+
+--- at 5299 ---
+override | Festival bell, town meeting horn, storm shelter call | Event activity block |
+| **P6** | Communal obligation | Committed project shift (signed up) | Communal BT |
+| **P7** | Schedule block | Current template / override activity | Work, lunch, sleep |
+| **P8** | Soft needs | Needs in **Low** band (30–59) | Biases utility, rarely alone wins |
+| **P9** | Social opportunity | Friend nearby, low Social | Conversation, group |
+| **P10** | Personality / idle flavor | Curious inspect, bench sit | Tie-breaker |
+
+### 2.1 Worked examples
+
+**Example A — Farmer at work, hunger hits Critical**
+
+| Pressure | Rank | Result |
+|----------|------|--------|
+| Continue harvest (schedule) | P7 | Score ~65 |
+| Eat lunch at tavern (hunger critical) | P3 | Preempts → state `NeedDriven`; eat action gets +40 need bonus → **wins** |
+
+NPC leaves field (BT: `stow_tool → path_tavern → eat`). Schedule is **paused**, not discarded.
+
+**Example B — Merchant in shop, player opens trade**
+
+| Pressure | Rank | Result |
+|----------|------|--------|
+| Stock shelves (schedule) | P7 | Interrupted |
+| Player trade lock | P4 | **Wins** — `TradingWithPlayer` BT; schedule paused |
+
+**Example C — Lumberjack, Social = 28, lunch block active**
+
+| Pressure | Rank | Result |
+|----------|------|--------|
+| Critical Social | P3 borderline | Utility compares `eat_alone` vs `eat_with_friend` |
+| Lunch schedule | P7 | Both are lunch variants; **utility** picks tavern with Tom (+relationship, +social satisfy) |
+
+Schedule and need **align** — utility only picks *which* lunch.
+
+**Example D — Child Lily, Energy fine, guar
+
+--- at 5359 ---
+all | Event activity block |
+| **P6** | Communal obligation | Committed project shift (signed up) | Communal BT |
+| **P7** | Schedule block | Current template / override activity | Work, lunch, sleep |
+| **P8** | Soft needs | Needs in **Low** band (30–59) | Biases utility, rarely alone wins |
+| **P9** | Social opportunity | Friend nearby, low Social | Conversation, group |
+| **P10** | Personality / idle flavor | Curious inspect, bench sit | Tie-breaker |
+
+### 2.1 Worked examples
+
+**Example A — Farmer at work, hunger hits Critical**
+
+| Pressure | Rank | Result |
+|----------|------|--------|
+| Continue harvest (schedule) | P7 | Score ~65 |
+| Eat lunch at tavern (hunger critical) | P3 | Preempts → state `NeedDriven`; eat action gets +40 need bonus → **wins** |
+
+NPC leaves field (BT: `stow_tool → path_tavern → eat`). Schedule is **paused**, not discarded.
+
+**Example B — Merchant in shop, player opens trade**
+
+| Pressure | Rank | Result |
+|----------|------|--------|
+| Stock shelves (schedule) | P7 | Interrupted |
+| Player trade lock | P4 | **Wins** — `TradingWithPlayer` BT; schedule paused |
+
+**Example C — Lumberjack, Social = 28, lunch block active**
+
+| Pressure | Rank | Result |
+|----------|------|--------|
+| Critical Social | P3 borderline | Utility compares `eat_alone` vs `eat_with_friend` |
+| Lunch schedule | P7 | Both are lunch variants; **utility** picks tavern with Tom (+relationship, +social satisfy) |
+
+Schedule and need **align** — utility only picks *which* lunch.
+
+**Example D — Child Lily, Energy fine, guardian walks away**
+
+| Pressure | Rank | Result |
+|----------|
+
+--- at 7832 ---
+| Yes — resume schedule block |
+| PR-06 | Event override pushed (festival, meeting) | `Routine` or `Communal` | Pause if same priority event | After event window |
+| PR-07 | Communal shift start (committed) | `Communal` | Pause schedule | After shift end |
+| PR-08 | Story/script `forceActivity` | `Unavailable` | Cancel | When script releases |
+| PR-09 | Conversation invited (both Social-ready) | `Social` | Pause | After dyad ends |
+| PR-10 | Path blocked / BT fail N times | — | **Re-tick** utility | N/A |
+
+### 3.2 Pause vs cancel semantics
+
+```
+InterruptPolicy {
+  PAUSE:   save BT snapshot (blackboard keys + leaf index); resume within same schedule block
+  CANCEL:  clear BT; mark activity partial (e.g. 60% farm progress kept)
+  FINISH:  allow current atomic leaf to complete (e.g. finish placing one item)
+}
+```
+
+| Activity type | Default policy |
+|---------------|----------------|
+| Locomotion / work loop | Pause if PR-03, PR-05, PR-06; Cancel if PR-01 |
+| One-shot transaction (trade, eat) | Finish current leaf if &lt; 2s left |
+| Sleep | Cancel only for PR-01, PR-02; hunger uses **wake** transition |
+| Dialogue | Pause all other; dialogue is P4 lock |
+
+### 3.3 Preemption scan order
+
+Evaluate **first match wins** (do not stack multiple preempts in one tick):
+
+```
+1. PR-08 script lock
+2. PR-01 immediate danger
+3. PR-02 health critical
+4. PR-04 safety + threat
+5. PR-03 critical hunger/energy (role-specific thresholds)
+6. PR-05 player interaction lock
+7. PR-06 event override
+8. PR-07 communal shift
+9. PR-09 social invite (only if initiator within range and both free)
+```
+
+Lower
+
+--- at 7906 ---
+ meeting) | `Routine` or `Communal` | Pause if same priority event | After event window |
+| PR-07 | Communal shift start (committed) | `Communal` | Pause schedule | After shift end |
+| PR-08 | Story/script `forceActivity` | `Unavailable` | Cancel | When script releases |
+| PR-09 | Conversation invited (both Social-ready) | `Social` | Pause | After dyad ends |
+| PR-10 | Path blocked / BT fail N times | — | **Re-tick** utility | N/A |
+
+### 3.2 Pause vs cancel semantics
+
+```
+InterruptPolicy {
+  PAUSE:   save BT snapshot (blackboard keys + leaf index); resume within same schedule block
+  CANCEL:  clear BT; mark activity partial (e.g. 60% farm progress kept)
+  FINISH:  allow current atomic leaf to complete (e.g. finish placing one item)
+}
+```
+
+| Activity type | Default policy |
+|---------------|----------------|
+| Locomotion / work loop | Pause if PR-03, PR-05, PR-06; Cancel if PR-01 |
+| One-shot transaction (trade, eat) | Finish current leaf if &lt; 2s left |
+| Sleep | Cancel only for PR-01, PR-02; hunger uses **wake** transition |
+| Dialogue | Pause all other; dialogue is P4 lock |
+
+### 3.3 Preemption scan order
+
+Evaluate **first match wins** (do not stack multiple preempts in one tick):
+
+```
+1. PR-08 script lock
+2. PR-01 immediate danger
+3. PR-02 health critical
+4. PR-04 safety + threat
+5. PR-03 critical hunger/energy (role-specific thresholds)
+6. PR-05 player interaction lock
+7. PR-06 event override
+8. PR-07 communal shift
+9. PR-09 social invite (only if initiator within range and both free)
+```
+
+Lower rules never fire if a higher rule matched.
+
+---
+
+## 4. Utility Scoring Sy
+
+--- at 7942 ---
+| Pause if same priority event | After event window |
+| PR-07 | Communal shift start (committed) | `Communal` | Pause schedule | After shift end |
+| PR-08 | Story/script `forceActivity` | `Unavailable` | Cancel | When script releases |
+| PR-09 | Conversation invited (both Social-ready) | `Social` | Pause | After dyad ends |
+| PR-10 | Path blocked / BT fail N times | — | **Re-tick** utility | N/A |
+
+### 3.2 Pause vs cancel semantics
+
+```
+InterruptPolicy {
+  PAUSE:   save BT snapshot (blackboard keys + leaf index); resume within same schedule block
+  CANCEL:  clear BT; mark activity partial (e.g. 60% farm progress kept)
+  FINISH:  allow current atomic leaf to complete (e.g. finish placing one item)
+}
+```
+
+| Activity type | Default policy |
+|---------------|----------------|
+| Locomotion / work loop | Pause if PR-03, PR-05, PR-06; Cancel if PR-01 |
+| One-shot transaction (trade, eat) | Finish current leaf if &lt; 2s left |
+| Sleep | Cancel only for PR-01, PR-02; hunger uses **wake** transition |
+| Dialogue | Pause all other; dialogue is P4 lock |
+
+### 3.3 Preemption scan order
+
+Evaluate **first match wins** (do not stack multiple preempts in one tick):
+
+```
+1. PR-08 script lock
+2. PR-01 immediate danger
+3. PR-02 health critical
+4. PR-04 safety + threat
+5. PR-03 critical hunger/energy (role-specific thresholds)
+6. PR-05 player interaction lock
+7. PR-06 event override
+8. PR-07 communal shift
+9. PR-09 social invite (only if initiator within range and both free)
+```
+
+Lower rules never fire if a higher rule matched.
+
+---
+
+## 4. Utility Scoring System
+
+### 4.1 Formula
+
+Each candidat
+
+--- at 9237 ---
+energy (role-specific thresholds)
+6. PR-05 player interaction lock
+7. PR-06 event override
+8. PR-07 communal shift
+9. PR-09 social invite (only if initiator within range and both free)
+```
+
+Lower rules never fire if a higher rule matched.
+
+---
+
+## 4. Utility Scoring System
+
+### 4.1 Formula
+
+Each candidate action `a` gets:
+
+```text
+U(a) = Base(a)
+     + NeedUrgency(a)
+     + ScheduleFit(a)
+     + PersonalityFit(a)
+     + RelationshipFit(a)
+     + EnvironmentFit(a)
+     + MemoryFit(a)
+     - Cost(a)
+```
+
+All terms are **floats** in roughly **−50..+80** range. Final scores compared after clamp to **0..150**.
+
+**Selection rule:**
+
+```text
+winner = argmax U(a)
+if U(winner) < MIN_THRESHOLD (40): use fallback ladder
+if current action c exists and U(winner) < U(c) + HYSTERESIS (8): keep c
+```
+
+`HYSTERESIS` stops flicker (NPC oscillating between eat and work every 0.5s).
+
+### 4.2 Term definitions
+
+#### Base(a)
+Designer-set per action type: `Eat=30`, `Sleep=35`, `Work=45`, `Chat=25`, `Flee=80`.
+
+#### NeedUrgency(a)
+For each need `n` that action satisfies:
+
+```text
+urgency(n) = (100 - value(n)) / 100          // 0..1
+weight(n)  = roleNeedWeight[n] * criticalMult
+
+criticalMult = 2.5 if n in Critical band, 1.5 if Low, 1.0 if Fine
+
+NeedUrgency(a) = Σ satisfy[a,n] * urgency(n) * weight(n) * 40
+```
+
+`satisfy[a,n]` is 0–1 (eat → hunger 0.9, chat → social 0.6).
+
+#### ScheduleFit(a)
+```text
+ScheduleFit(a) =
+  +50  if a == current block default activity
+  +30  if a == alternate allowed in same block (e.g. FreeTime)
+  +15  if a == next block within 15 game-minutes (early lunch)
+  -25  if a conf
+
+--- at 15533 ---
+tical need → bark + utility may still pick need unless player offers food (gift hook)
+  ELIF NPC in Communal committed → "After my shift" unless high trust player
+  ELSE → PR-05 pause + greet BT
+```
+
+**Gift during Critical hunger:** injects candidate `AcceptGiftEat` with `NeedUrgency +90`, `RelationshipFit +20` — often beats tavern trip (saves travel Cost).
+
+---
+
+## 6. Edge Cases & Conflict Resolution
+
+### 6.1 Two critical needs at once
+
+**Rule: lexicographic by survival, then by urgency gap.**
+
+1. Compute `urgency(n) = (100 - value) / 100` for all Critical needs.  
+2. Apply **survival order:** Health &gt; Energy &gt; Hunger &gt; Safety &gt; others.  
+3. If top two within **0.05 urgency**, use role tie-break table:
+
+| Role | Tie-break bias |
+|------|----------------|
+| Child | Safety &gt; Energy &gt; Hunger |
+| Elder | Energy &gt; Health &gt; Hunger |
+| Guard | Safety &gt; Energy |
+| Default | Hunger &gt; Energy &gt; Social |
+
+**Example:** Energy 12, Hunger 18 → both Critical; urgencies 0.88 vs 0.82 → **Energy wins** (survival order), NPC seeks bed not food. *Exception:* Hunger &lt; 5 → starvation override bumps Hunger first.
+
+**Implementation:** `NeedDriven` state stores `primaryNeed` for BT routing; secondary need adds bonus to combined actions (eat at tavern also has benches → +Energy recovery).
+
+### 6.2 Schedule vs player interaction
+
+| Scenario | Resolution |
+|----------|------------|
+| Player talks during work | P4 pauses work; after dialogue, resume if block time &gt; 10 min |
+| Player blocks path | Path fail → re-tick; utility may pick `WaitHere` or `RepathAround` |
+
+--- at 17656 ---
+andom: `hash(npcId + day + hour) % N` — **same NPC consistent within hour**, avoids jitter
+
+### 6.4 Communal vs schedule vs need
+
+Committed communal (P6) beats schedule. Critical need (P3) beats communal **only** if `need == Health` or `Energy < 10` (collapse risk). Otherwise NPC completes 15-min commitment slice then breaks for food — **honor partial obligation**.
+
+### 6.5 BT failure loop
+
+If action fails 3 times (path, target gone):
+
+- Add `+100` penalty to that action for 5 minutes  
+- Force fallback: schedule default at secondary location  
+- Log for designers (stuck NPC telemetry)
+
+---
+
+## 7. Implementation Considerations
+
+### 7.1 Recommended code shape
+
+```
+NpcDecisionSystem
+├── PreemptionScanner      // ordered PR-01..PR-09
+├── CandidateGenerator     // state + block + context → Action[]
+├── UtilityEvaluator       // pure functions per term
+├── ActionSelector         // max score + hysteresis
+├── InterruptController    // pause/cancel BT snapshots
+└── FallbackResolver       // ladder when U < MIN
+```
+
+**State machine** (small, explicit):
+
+```csharp
+enum NpcCoarseState { Sleeping, Routine, NeedDriven, Social, Reacting, Communal, Unavailable }
+
+// Transitions only from PreemptionScanner + script hooks
+// Utility does NOT change state except NeedDriven ↔ Routine when all needs > Low
+```
+
+**Action registry** (data-driven):
+
+```json
+{
+  "id": "GoTavernEat",
+  "base": 30,
+  "satisfies": { "hunger": 0.9, "social": 0.2 },
+  "bt": "EatAtTavern",
+  "tags": ["indoor", "food", "social"],
+  "allowedStates": ["Routine", "NeedDriven"]
+}
+```
+
+`CandidateGenerator` filters registry by
+
+--- at 17696 ---
+**same NPC consistent within hour**, avoids jitter
+
+### 6.4 Communal vs schedule vs need
+
+Committed communal (P6) beats schedule. Critical need (P3) beats communal **only** if `need == Health` or `Energy < 10` (collapse risk). Otherwise NPC completes 15-min commitment slice then breaks for food — **honor partial obligation**.
+
+### 6.5 BT failure loop
+
+If action fails 3 times (path, target gone):
+
+- Add `+100` penalty to that action for 5 minutes  
+- Force fallback: schedule default at secondary location  
+- Log for designers (stuck NPC telemetry)
+
+---
+
+## 7. Implementation Considerations
+
+### 7.1 Recommended code shape
+
+```
+NpcDecisionSystem
+├── PreemptionScanner      // ordered PR-01..PR-09
+├── CandidateGenerator     // state + block + context → Action[]
+├── UtilityEvaluator       // pure functions per term
+├── ActionSelector         // max score + hysteresis
+├── InterruptController    // pause/cancel BT snapshots
+└── FallbackResolver       // ladder when U < MIN
+```
+
+**State machine** (small, explicit):
+
+```csharp
+enum NpcCoarseState { Sleeping, Routine, NeedDriven, Social, Reacting, Communal, Unavailable }
+
+// Transitions only from PreemptionScanner + script hooks
+// Utility does NOT change state except NeedDriven ↔ Routine when all needs > Low
+```
+
+**Action registry** (data-driven):
+
+```json
+{
+  "id": "GoTavernEat",
+  "base": 30,
+  "satisfies": { "hunger": 0.9, "social": 0.2 },
+  "bt": "EatAtTavern",
+  "tags": ["indoor", "food", "social"],
+  "allowedStates": ["Routine", "NeedDriven"]
+}
+```
+
+`CandidateGenerator` filters registry by state, tags, cooldowns, and current blo
+
+--- at 17751 ---
+ 6.4 Communal vs schedule vs need
+
+Committed communal (P6) beats schedule. Critical need (P3) beats communal **only** if `need == Health` or `Energy < 10` (collapse risk). Otherwise NPC completes 15-min commitment slice then breaks for food — **honor partial obligation**.
+
+### 6.5 BT failure loop
+
+If action fails 3 times (path, target gone):
+
+- Add `+100` penalty to that action for 5 minutes  
+- Force fallback: schedule default at secondary location  
+- Log for designers (stuck NPC telemetry)
+
+---
+
+## 7. Implementation Considerations
+
+### 7.1 Recommended code shape
+
+```
+NpcDecisionSystem
+├── PreemptionScanner      // ordered PR-01..PR-09
+├── CandidateGenerator     // state + block + context → Action[]
+├── UtilityEvaluator       // pure functions per term
+├── ActionSelector         // max score + hysteresis
+├── InterruptController    // pause/cancel BT snapshots
+└── FallbackResolver       // ladder when U < MIN
+```
+
+**State machine** (small, explicit):
+
+```csharp
+enum NpcCoarseState { Sleeping, Routine, NeedDriven, Social, Reacting, Communal, Unavailable }
+
+// Transitions only from PreemptionScanner + script hooks
+// Utility does NOT change state except NeedDriven ↔ Routine when all needs > Low
+```
+
+**Action registry** (data-driven):
+
+```json
+{
+  "id": "GoTavernEat",
+  "base": 30,
+  "satisfies": { "hunger": 0.9, "social": 0.2 },
+  "bt": "EatAtTavern",
+  "tags": ["indoor", "food", "social"],
+  "allowedStates": ["Routine", "NeedDriven"]
+}
+```
+
+`CandidateGenerator` filters registry by state, tags, cooldowns, and current block `allowedActivities`.
+
+### 7.2 Execution coupling
+
+- 
+
+--- at 18699 ---
+small, explicit):
+
+```csharp
+enum NpcCoarseState { Sleeping, Routine, NeedDriven, Social, Reacting, Communal, Unavailable }
+
+// Transitions only from PreemptionScanner + script hooks
+// Utility does NOT change state except NeedDriven ↔ Routine when all needs > Low
+```
+
+**Action registry** (data-driven):
+
+```json
+{
+  "id": "GoTavernEat",
+  "base": 30,
+  "satisfies": { "hunger": 0.9, "social": 0.2 },
+  "bt": "EatAtTavern",
+  "tags": ["indoor", "food", "social"],
+  "allowedStates": ["Routine", "NeedDriven"]
+}
+```
+
+`CandidateGenerator` filters registry by state, tags, cooldowns, and current block `allowedActivities`.
+
+### 7.2 Execution coupling
+
+- **Decision system outputs** `ActionId` + `TargetId` + `InterruptPolicy`.  
+- **BT runner** owns movement/anim; reports `Running | Success | Fail`.  
+- **Blackboard** shared: `primaryNeed`, `pausedBtSnapshot`, `scheduleBlockId`, `playerLockId`.
+
+Keep utility **pure** (no side effects) for testability:
+
+```text
+assert UtilityEvaluator(GoTavernEat, snapshot) == 88.0 ± ε
+```
+
+### 7.3 Performance (multiplayer)
+
+| Technique | Detail |
+|-----------|--------|
+| **Stagger ticks** | `tickSlot = npcIndex % 10`; spread 0.5s evaluations across frames |
+| **Candidate cap** | Max 12 actions; pre-index registry by `allowedStates` |
+| **Term short-circuit** | If no need Low+, skip RelationshipFit on non-social actions |
+| **Shared environment cache** | Per zone: weather, dangerLevel, festival — one read per tick batch |
+| **Cold tier skip** | No utility; `abstractAction = scheduleBlock.default` |
+| **Hot promotion** | On player enter AOI, one full tic
+
+--- at 20881 ---
+ncy + fallback |
+| **P2** | Full utility terms, hysteresis, pause/resume, ties |
+| **P3** | Events, communal PR-07, memory, relationship fits |
+| **P4** | Role tie-breaks, child/guard rules, telemetry overlay |
+
+---
+
+## Quick reference card
+
+```
+PREEMPT first (script > danger > health > critical need > player > event > communal)
+UTILITY second (only in Routine / NeedDriven / Social / Communal)
+FALLBACK last (schedule default → safe idle)
+
+Critical need → pause schedule, not delete
+Player interact → pause, resume if time left
+Switch action only if Δscore > 8
+No score > 40 → fallback ladder
+```
+
+This keeps village life **readable** (“Elsie skipped harvest because she was starving”) while leaving room for personality and relationships to nudge choices inside the same priority frame. If you want this merged into a single master doc or exported as `docs/npc-decision-system.md` in the repo, say the word and I’ll write it there.
+
+--- at 21102 ---
+uick reference card
+
+```
+PREEMPT first (script > danger > health > critical need > player > event > communal)
+UTILITY second (only in Routine / NeedDriven / Social / Communal)
+FALLBACK last (schedule default → safe idle)
+
+Critical need → pause schedule, not delete
+Player interact → pause, resume if time left
+Switch action only if Δscore > 8
+No score > 40 → fallback ladder
+```
+
+This keeps village life **readable** (“Elsie skipped harvest because she was starving”) while leaving room for personality and relationships to nudge choices inside the same priority frame. If you want this merged into a single master doc or exported as `docs/npc-decision-system.md` in the repo, say the word and I’ll write it there.
+
+--- at 21168 ---
+ critical need > player > event > communal)
+UTILITY second (only in Routine / NeedDriven / Social / Communal)
+FALLBACK last (schedule default → safe idle)
+
+Critical need → pause schedule, not delete
+Player interact → pause, resume if time left
+Switch action only if Δscore > 8
+No score > 40 → fallback ladder
+```
+
+This keeps village life **readable** (“Elsie skipped harvest because she was starving”) while leaving room for personality and relationships to nudge choices inside the same priority frame. If you want this merged into a single master doc or exported as `docs/npc-decision-system.md` in the repo, say the word and I’ll write it there.
+
