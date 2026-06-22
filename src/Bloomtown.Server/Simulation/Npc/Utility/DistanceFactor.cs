@@ -1,4 +1,5 @@
 using Bloomtown.Server.Simulation.Npc.Ai;
+using Bloomtown.Server.Simulation.Npc.Movement;
 using Bloomtown.Server.Simulation.Npc.Schedule;
 
 namespace Bloomtown.Server.Simulation.Npc.Utility;
@@ -19,16 +20,12 @@ public sealed class DistanceFactor : IUtilityFactor
 
     private static float GetDistanceToActivity(uint entityId, NpcActivityType activity, float posX, float posZ)
     {
-        if (activity == NpcActivityType.Patrol)
-            return GetDistanceToNearestPatrolWaypoint(entityId, posX, posZ);
-
-        var destination = NpcActivityLocations.GetDestination(entityId, activity);
-        return Distance(posX, posZ, destination.X, destination.Z);
+        var path = NpcActivityLocations.GetActivityPath(entityId, activity);
+        return GetDistanceToNearestWaypoint(path, posX, posZ);
     }
 
-    private static float GetDistanceToNearestPatrolWaypoint(uint entityId, float posX, float posZ)
+    private static float GetDistanceToNearestWaypoint(WaypointPath path, float posX, float posZ)
     {
-        var path = NpcActivityLocations.GetPatrolPath(entityId);
         var best = float.MaxValue;
 
         foreach (var point in path.Points)

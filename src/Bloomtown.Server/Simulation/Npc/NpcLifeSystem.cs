@@ -78,6 +78,11 @@ public sealed class NpcLifeSystem : ISimulationSystem
                 lifeState.WasAtDestination = false;
                 lifeState.MinutesInCurrentActivity = 0;
 
+                if (selection.SelectedActivity is NpcActivityType.Eat or NpcActivityType.Rest)
+                    ApplyActivityEffects(simulation);
+
+                SaveNpcState(simulation);
+
                 var runnerUpName = selection.RunnerUpActivity?.ToString() ?? "none";
                 var runnerUpScore = selection.RunnerUpScore ?? 0f;
 
@@ -101,15 +106,7 @@ public sealed class NpcLifeSystem : ISimulationSystem
                 continue;
             }
 
-            if (lifeState.WasAtDestination)
-                continue;
-
             lifeState.WasAtDestination = true;
-
-            if (simulation.CurrentActivity is NpcActivityType.Eat or NpcActivityType.Rest)
-                ApplyActivityEffects(simulation);
-
-            SaveNpcState(simulation);
         }
     }
 
@@ -170,15 +167,9 @@ public sealed class NpcLifeSystem : ISimulationSystem
 
     private static void ApplyActivityMovement(NpcSimulationState simulation, NpcActivityType activity)
     {
-        if (activity == NpcActivityType.Patrol)
-        {
-            simulation.Movement.SetPatrol(activity, NpcActivityLocations.GetPatrolPath(simulation.Npc.EntityId));
-            simulation.Movement.SyncTargetToNearestWaypoint(simulation.Npc.PositionX, simulation.Npc.PositionZ);
-            return;
-        }
-
-        var destination = NpcActivityLocations.GetDestination(simulation.Npc.EntityId, activity);
-        simulation.Movement.SetGoTo(activity, destination);
+        var path = NpcActivityLocations.GetActivityPath(simulation.Npc.EntityId, activity);
+        simulation.Movement.SetPatrol(activity, path);
+        simulation.Movement.SyncTargetToNearestWaypoint(simulation.Npc.PositionX, simulation.Npc.PositionZ);
     }
 
     private static void ApplyActivityEffects(NpcSimulationState simulation)

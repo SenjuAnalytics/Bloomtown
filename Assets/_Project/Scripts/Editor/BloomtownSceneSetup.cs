@@ -485,6 +485,7 @@ namespace Bloomtown.Client.Editor
             GameObjectUtility.RemoveMonoBehavioursWithMissingScript(root);
 
             CharacterVisualFactory.RemoveExistingVisual(root);
+            CharacterVisualFactory.EnsureSingleVisual(root);
             CharacterVisualFactory.HideLegacyRootMesh(root);
 
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(modelPrefab, root.transform);

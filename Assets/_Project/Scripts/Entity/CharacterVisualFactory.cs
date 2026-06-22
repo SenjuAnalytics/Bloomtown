@@ -63,17 +63,48 @@ namespace Bloomtown.Client.Entity
             return visual;
         }
 
+        public static void EnsureSingleVisual(GameObject root)
+        {
+            Transform keep = null;
+
+            for (var i = 0; i < root.transform.childCount; i++)
+            {
+                var child = root.transform.GetChild(i);
+                if (child.name != CharacterVisualName)
+                    continue;
+
+                if (keep == null)
+                {
+                    keep = child;
+                    continue;
+                }
+
+                DestroyObject(child.gameObject);
+            }
+        }
+
         public static void RemoveExistingVisual(GameObject root)
         {
-            var existing = root.transform.Find(CharacterVisualName);
-            if (existing == null) return;
+            for (var i = root.transform.childCount - 1; i >= 0; i--)
+            {
+                var child = root.transform.GetChild(i);
+                if (child.name != CharacterVisualName)
+                    continue;
 
+                DestroyObject(child.gameObject);
+            }
+        }
+
+        private static void DestroyObject(Object obj)
+        {
 #if UNITY_EDITOR
             if (!Application.isPlaying)
-                Object.DestroyImmediate(existing.gameObject);
-            else
+            {
+                Object.DestroyImmediate(obj);
+                return;
+            }
 #endif
-                Object.Destroy(existing.gameObject);
+            Object.Destroy(obj);
         }
 
         public static void HideLegacyRootMesh(GameObject root)

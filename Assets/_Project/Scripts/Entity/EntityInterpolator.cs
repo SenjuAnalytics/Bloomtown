@@ -22,8 +22,11 @@ namespace Bloomtown.Client.Entity
         [Tooltip("Jarak maksimum sebelum hard-teleport daripada lerp.")]
         [SerializeField] private float _teleportThreshold = 5f;
 
-        [Tooltip("Seberapa cepat rotasi mengikuti arah baru.")]
-        [SerializeField] private float _rotationSpeed = 10f;
+        [Tooltip("Derajat/detik saat berdiri — rotasi mengikuti yaw server.")]
+        [SerializeField] private float _idleTurnRateDegPerSec = 360f;
+
+        [Tooltip("Kecepatan minimum (m/s) agar tubuh menghadap arah langkah.")]
+        [SerializeField] private float _facingMoveSpeedThreshold = 0.08f;
 
         // ── Snapshot buffer ─────────────────────────────────────────────────
         private struct Snapshot
@@ -108,6 +111,7 @@ namespace Bloomtown.Client.Entity
             // Posisi interpolasi
             Vector3 targetPos = Vector3.Lerp(from.Position, to.Position, t);
             float   dist      = Vector3.Distance(transform.position, targetPos);
+            var     prevPos   = transform.position;
 
             // FIX: Teleport threshold benar-benar berbeda dengan smooth lerp
             if (dist > _teleportThreshold)
@@ -121,12 +125,31 @@ namespace Bloomtown.Client.Entity
                 transform.position = targetPos;
             }
 
-            // Rotasi: lerp yaw ke arah terbaru
-            float targetYaw = Mathf.LerpAngle(from.Yaw, to.Yaw, t);
-            Quaternion targetRot = Quaternion.Euler(0f, targetYaw, 0f);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, _rotationSpeed * Time.deltaTime);
-
+            UpdateFacing(prevPos, from, to, t);
             UpdateLocomotionAnimation();
+        }
+
+        private void UpdateFacing(Vector3 previousPosition, Snapshot from, Snapshot to, float t)
+        {
+            var delta = transform.position - previousPosition;
+            delta.y = 0f;
+
+            var dt = Mathf.Max(Time.deltaTime, 0.0001f);
+            var moveSpeed = delta.magnitude / dt;
+
+            if (moveSpeed >= _facingMoveSpeedThreshold)
+            {
+                // Hadap arah langkah — cegah animasi jalan "mundur" (moonwalk).
+                var moveYaw = Mathf.Atan2(delta.x, delta.z) * Mathf.Rad2Deg;
+                transform.rotation = Quaternion.Euler(0f, moveYaw, 0f);
+                return;
+            }
+
+            var serverYaw = Mathf.LerpAngle(from.Yaw, to.Yaw, t);
+            var currentYaw = transform.eulerAngles.y;
+            var maxStep = _idleTurnRateDegPerSec * dt;
+            var idleYaw = Mathf.MoveTowardsAngle(currentYaw, serverYaw, maxStep);
+            transform.rotation = Quaternion.Euler(0f, idleYaw, 0f);
         }
 
         private void UpdateLocomotionAnimation()

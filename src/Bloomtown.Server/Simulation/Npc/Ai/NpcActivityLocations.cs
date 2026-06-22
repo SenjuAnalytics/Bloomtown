@@ -29,24 +29,64 @@ public static class NpcActivityLocations
         };
     }
 
+    public static WaypointPath GetActivityPath(uint entityId, NpcActivityType activity)
+    {
+        if (activity == NpcActivityType.Patrol)
+            return GetPatrolPath(entityId);
+
+        var center = GetDestination(entityId, activity);
+        var (radiusX, radiusZ, segments) = activity switch
+        {
+            NpcActivityType.Work   => (2.0f, 2.0f, 6),
+            NpcActivityType.Social => (2.5f, 2.5f, 8),
+            NpcActivityType.Eat    => (1.5f, 1.5f, 6),
+            NpcActivityType.Rest   => (1.2f, 1.2f, 6),
+            _                      => (2.0f, 2.0f, 6),
+        };
+
+        return CreateCircleLoop(center.X, center.Z, radiusX, radiusZ, segments);
+    }
+
     public static WaypointPath GetPatrolPath(uint entityId)
     {
         return entityId switch
         {
-            NpcEntityIds.Elsie => CreateElsiePatrol(),
-            NpcEntityIds.Tom => CreateTomPatrol(),
-            NpcEntityIds.Mira => CreateMiraPatrol(),
-            NpcEntityIds.Harold => CreateHaroldPatrol(),
-            NpcEntityIds.Greta => CreateGretaPatrol(),
-            NpcEntityIds.Nora => CreateNoraPatrol(),
-            NpcEntityIds.Elias => CreateEliasPatrol(),
-            NpcEntityIds.Marcus => CreateMarcusPatrol(),
-            NpcEntityIds.Ben => CreateBenPatrol(),
-            NpcEntityIds.Lila => CreateLilaPatrol(),
-            NpcEntityIds.Rowan => CreateRowanPatrol(),
+            NpcEntityIds.Elsie   => CreateElsiePatrol(),
+            NpcEntityIds.Tom     => CreateTomPatrol(),
+            NpcEntityIds.Mira    => CreateMiraPatrol(),
+            NpcEntityIds.Harold  => CreateHaroldPatrol(),
+            NpcEntityIds.Greta   => CreateGretaPatrol(),
+            NpcEntityIds.Nora    => CreateNoraPatrol(),
+            NpcEntityIds.Elias   => CreateEliasPatrol(),
+            NpcEntityIds.Marcus  => CreateMarcusPatrol(),
+            NpcEntityIds.Ben     => CreateBenPatrol(),
+            NpcEntityIds.Lila    => CreateLilaPatrol(),
+            NpcEntityIds.Rowan   => CreateRowanPatrol(),
             NpcEntityIds.Eleanor => CreateEleanorPatrol(),
-            _ => new WaypointPath([new Waypoint(0f, 0f), new Waypoint(1f, 1f)]),
+            _ => CreateCircleLoop(14f, 12f, 3f, 3f),
         };
+    }
+
+    /// <summary>Loop tertutup — NPC berjalan mutar terus tanpa berhenti.</summary>
+    public static WaypointPath CreateCircleLoop(
+        float centerX,
+        float centerZ,
+        float radiusX,
+        float radiusZ,
+        int segments = 8)
+    {
+        segments = Math.Clamp(segments, 4, 16);
+        var points = new Waypoint[segments];
+
+        for (var i = 0; i < segments; i++)
+        {
+            var angle = MathF.PI * 2f * i / segments;
+            points[i] = new Waypoint(
+                centerX + MathF.Cos(angle) * radiusX,
+                centerZ + MathF.Sin(angle) * radiusZ);
+        }
+
+        return new WaypointPath(points, pingPong: false);
     }
 
     private static Waypoint GetElsieDestination(NpcActivityType activity)
@@ -75,29 +115,11 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateElsiePatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(12f, 12f),
-            new Waypoint(20f, 12f),
-            new Waypoint(20f, 20f),
-            new Waypoint(12f, 20f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateElsiePatrol() =>
+        CreateCircleLoop(16f, 16f, 4f, 4f, 8);
 
-    private static WaypointPath CreateTomPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(100f, 100f),
-            new Waypoint(115f, 100f),
-            new Waypoint(115f, 115f),
-            new Waypoint(100f, 115f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateTomPatrol() =>
+        CreateCircleLoop(107.5f, 107.5f, 7.5f, 7.5f, 8);
 
     private static Waypoint GetMiraDestination(NpcActivityType activity)
     {
@@ -125,29 +147,11 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateMiraPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(16f, 6f),
-            new Waypoint(20f, 6f),
-            new Waypoint(20f, 10f),
-            new Waypoint(16f, 10f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateMiraPatrol() =>
+        CreateCircleLoop(18f, 8f, 2.5f, 2.5f, 8);
 
-    private static WaypointPath CreateHaroldPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(12f, 10f),
-            new Waypoint(16f, 10f),
-            new Waypoint(16f, 14f),
-            new Waypoint(12f, 14f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateHaroldPatrol() =>
+        CreateCircleLoop(14f, 12f, 3f, 3f, 8);
 
     private static Waypoint GetGretaDestination(NpcActivityType activity)
     {
@@ -162,17 +166,8 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateGretaPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(20f, 14f),
-            new Waypoint(24f, 14f),
-            new Waypoint(24f, 18f),
-            new Waypoint(20f, 18f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateGretaPatrol() =>
+        CreateCircleLoop(22f, 16f, 2.5f, 2.5f, 8);
 
     private static Waypoint GetNoraDestination(NpcActivityType activity)
     {
@@ -187,17 +182,8 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateNoraPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(14f, 16f),
-            new Waypoint(18f, 16f),
-            new Waypoint(18f, 20f),
-            new Waypoint(14f, 20f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateNoraPatrol() =>
+        CreateCircleLoop(16f, 18f, 2.5f, 2.5f, 8);
 
     private static Waypoint GetEliasDestination(NpcActivityType activity)
     {
@@ -212,17 +198,8 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateEliasPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(10f, 12f),
-            new Waypoint(14f, 12f),
-            new Waypoint(14f, 16f),
-            new Waypoint(10f, 16f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateEliasPatrol() =>
+        CreateCircleLoop(12f, 14f, 2.5f, 2.5f, 8);
 
     private static Waypoint GetMarcusDestination(NpcActivityType activity)
     {
@@ -237,17 +214,8 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateMarcusPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(8f, 14f),
-            new Waypoint(12f, 14f),
-            new Waypoint(12f, 18f),
-            new Waypoint(8f, 18f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateMarcusPatrol() =>
+        CreateCircleLoop(10f, 16f, 2.5f, 2.5f, 8);
 
     private static Waypoint GetBenDestination(NpcActivityType activity)
     {
@@ -262,17 +230,8 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateBenPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(13f, 10f),
-            new Waypoint(17f, 10f),
-            new Waypoint(17f, 14f),
-            new Waypoint(13f, 14f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateBenPatrol() =>
+        CreateCircleLoop(15f, 12f, 2.5f, 2.5f, 8);
 
     private static Waypoint GetLilaDestination(NpcActivityType activity)
     {
@@ -287,17 +246,8 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateLilaPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(16f, 8f),
-            new Waypoint(20f, 8f),
-            new Waypoint(20f, 12f),
-            new Waypoint(16f, 12f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateLilaPatrol() =>
+        CreateCircleLoop(18f, 10f, 2.5f, 2.5f, 8);
 
     private static Waypoint GetRowanDestination(NpcActivityType activity)
     {
@@ -312,17 +262,8 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateRowanPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(9f, 7f),
-            new Waypoint(13f, 7f),
-            new Waypoint(13f, 11f),
-            new Waypoint(9f, 11f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateRowanPatrol() =>
+        CreateCircleLoop(11f, 9f, 2.5f, 2.5f, 8);
 
     private static Waypoint GetEleanorDestination(NpcActivityType activity)
     {
@@ -337,15 +278,6 @@ public static class NpcActivityLocations
         };
     }
 
-    private static WaypointPath CreateEleanorPatrol()
-    {
-        return new WaypointPath(
-        [
-            new Waypoint(11f, 10f),
-            new Waypoint(15f, 10f),
-            new Waypoint(15f, 14f),
-            new Waypoint(11f, 14f),
-        ],
-            pingPong: true);
-    }
+    private static WaypointPath CreateEleanorPatrol() =>
+        CreateCircleLoop(13f, 12f, 2.5f, 2.5f, 8);
 }

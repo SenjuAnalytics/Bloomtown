@@ -1,3 +1,4 @@
+using Bloomtown.Shared.Protocol;
 using UnityEngine;
 
 namespace Bloomtown.Client.Entity
@@ -97,6 +98,8 @@ namespace Bloomtown.Client.Entity
                 new Vector3(0.14f, 0.06f, 0.05f), new Vector3(0.16f, 0.08f, 0.24f), colors.Pants);
         }
 
+        public static void ClearLegacyVisualsPublic(GameObject root) => ClearLegacyVisuals(root);
+
         private static void ClearLegacyVisuals(GameObject root)
         {
             var humanoid = root.transform.Find("Humanoid");
@@ -165,8 +168,16 @@ namespace Bloomtown.Client.Entity
 
         public static void ApplyNpcBody(GameObject root, uint entityId)
         {
-            if (TryApplyFbxVisual(root, useNpcModel: true)) return;
+            var usePlayerModel = NpcEntityIds.UsesPlayerBodyModel(entityId);
+            if (ApplyNpcFbxVisual(root, usePlayerModel)) return;
             HumanoidBodyBuilder.Build(root, HumanoidColors.Npc(entityId));
+        }
+
+        /// <summary>Ganti model sesuai jenis kelamin NPC (prefab default = NpcModel).</summary>
+        private static bool ApplyNpcFbxVisual(GameObject root, bool usePlayerModel)
+        {
+            HumanoidBodyBuilder.ClearLegacyVisualsPublic(root);
+            return CharacterVisualFactory.AttachFromResources(root, useNpcModel: !usePlayerModel) != null;
         }
 
         public static void ApplyRemotePlayerBody(GameObject root, uint entityId)
@@ -182,6 +193,9 @@ namespace Bloomtown.Client.Entity
 
         private static bool TryApplyFbxVisual(GameObject root, bool useNpcModel)
         {
+            CharacterVisualFactory.EnsureSingleVisual(root);
+            HumanoidBodyBuilder.ClearLegacyVisualsPublic(root);
+
             if (HasFbxVisual(root))
             {
                 var visual = root.transform.Find(CharacterVisualFactory.CharacterVisualName);

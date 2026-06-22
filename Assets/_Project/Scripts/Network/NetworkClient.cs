@@ -181,9 +181,11 @@ namespace Bloomtown.Client.Network
                         NetworkEvents.FireNpcInteractionResponse(PacketSerializer.ReadNpcInteractionResponse(data));
                         break;
                     case PacketType.NpcAmbientComment:
-                        var (npcId, comment) = PacketSerializer.ReadNpcAmbientComment(data);
-                        NetworkEvents.FireNpcAmbientComment(npcId, comment);
+                    {
+                        var ambient = PacketSerializer.ReadNpcAmbientComment(data);
+                        NetworkEvents.FireNpcAmbientComment(ambient.NpcEntityId, ambient.Message);
                         break;
+                    }
 
                     // ── Economy & inventory ──
                     case PacketType.EconomyResponse:

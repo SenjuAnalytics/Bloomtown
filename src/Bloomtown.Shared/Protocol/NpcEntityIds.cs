@@ -21,4 +21,8 @@ public static class NpcEntityIds
     public const uint Eleanor = 10_012;
 
     public static bool IsNpc(uint entityId) => entityId >= IdOffset;
+
+    /// <summary>NPC perempuan memakai model tubuh yang sama dengan pemain (PlayerModel.fbx).</summary>
+    public static bool UsesPlayerBodyModel(uint entityId) =>
+        entityId is Elsie or Mira or Greta or Nora or Lila or Eleanor;
 }
