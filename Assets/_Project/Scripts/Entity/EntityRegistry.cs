@@ -113,6 +113,7 @@ namespace Bloomtown.Client.Entity
             }
 
             interpolator.Init(delta.EntityId);
+            CharacterCollisionBody.EnsureOn(go);
             _entities[delta.EntityId] = interpolator;
 
             if (isNpc)

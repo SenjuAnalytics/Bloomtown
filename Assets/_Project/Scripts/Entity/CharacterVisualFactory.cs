@@ -113,6 +113,9 @@ namespace Bloomtown.Client.Entity
             if (rootRenderer != null)
                 rootRenderer.enabled = false;
 
+            if (root.GetComponent<CharacterCollisionBody>() != null)
+                return;
+
             var rootCollider = root.GetComponent<Collider>();
             if (rootCollider != null && rootCollider is not CharacterController)
                 rootCollider.enabled = false;

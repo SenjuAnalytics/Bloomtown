@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 1787314051911292617}
   - component: {fileID: 3727925573347105935}
   - component: {fileID: 4446994975378279221}
+  - component: {fileID: 2289515810361721346}
   m_Layer: 0
   m_Name: NPC
   m_TagString: Untagged
@@ -31,7 +32,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 4969062499683311734}
+  - {fileID: 226065889064838875}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &3727925573347105935
@@ -65,7 +66,20 @@ MonoBehaviour:
   _walkCadenceHz: 0.88
   _designMoveSpeed: 2
   _moveThreshold: 0.08
---- !u!1001 &4863625335430432669
+--- !u!114 &2289515810361721346
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8676951009166930861}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3691d1fa65c47794b8101914ee413046, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Bloomtown.Client::Bloomtown.Client.Entity.CharacterCollisionBody
+  _radius: 0.3
+--- !u!1001 &335972025916424496
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -138,8 +152,8 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: f558b2e4498851141925fb618449770f, type: 3}
---- !u!4 &4969062499683311734 stripped
+--- !u!4 &226065889064838875 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: f558b2e4498851141925fb618449770f, type: 3}
-  m_PrefabInstance: {fileID: 4863625335430432669}
+  m_PrefabInstance: {fileID: 335972025916424496}
   m_PrefabAsset: {fileID: 0}

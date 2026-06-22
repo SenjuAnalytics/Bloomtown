@@ -194,6 +194,7 @@ namespace Bloomtown.Client.Editor
             cc.center = new Vector3(0f, 1f, 0f);
 
             var player = root.GetComponent<LocalPlayer>() ?? root.AddComponent<LocalPlayer>();
+            CharacterCollisionBody.EnsureOn(root);
 
             var cameraRig = root.transform.Find("CameraRig");
             if (cameraRig == null)
@@ -242,6 +243,8 @@ namespace Bloomtown.Client.Editor
 
             if (root.GetComponent<EntityInterpolator>() == null)
                 root.AddComponent<EntityInterpolator>();
+
+            CharacterCollisionBody.EnsureOn(root);
 
             CharacterVisualFactory.HideLegacyRootMesh(root);
 

@@ -86,6 +86,7 @@ namespace Bloomtown.Client.Player
             ApplyThirdPersonCamera();
 
             EntityBodyVisual.ApplyLocalPlayerBody(gameObject);
+            CharacterCollisionBody.EnsureOn(gameObject);
             _characterAnimator = GetComponent<CharacterAnimator>();
             _characterAnimator?.RebindAnimator();
 
