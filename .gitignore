@@ -11,8 +11,11 @@ Logs/
 Build/
 Builds/
 UserSettings/
-*.csproj
-*.sln
+# Ignore Unity-generated project files at repo root only
+/*.csproj
+# Keep manual .sln file but ignore Unity-generated ones
+/*.sln
+!Bloomtown.Server.sln
 
 ## Database
 *.db
