@@ -34,7 +34,7 @@ namespace Bloomtown.Server.Networking;
 
 public sealed class NetworkServer : INetEventListener
 {
-    private const int PlayerInputPacketSize = 17;
+    private const int PlayerInputPacketSize = PacketSerializer.PlayerInputPacketSize;
     private const int EntityDeltaPacketSize = 25;
 
     private readonly AoiSystem _aoiSystem;
@@ -270,26 +270,62 @@ public sealed class NetworkServer : INetEventListener
 
     public void Update(double deltaTimeSeconds)
     {
+        var deltaTime = (float)deltaTimeSeconds;
+
         foreach (var player in _players.Values)
         {
-            var input = player.LastInput;
-            var dirX = input.MoveDirX;
-            var dirY = input.MoveDirY;
-            var magnitude = MathF.Sqrt(dirX * dirX + dirY * dirY);
-
-            if (magnitude <= 0.0001f)
-                continue;
-
-            dirX /= magnitude;
-            dirY /= magnitude;
-
-            player.RotationYaw = input.LookYaw;
-
-            // Client mengirim arah gerak sudah dalam world-space (X/Z).
-            var distance = NetworkConstants.PlayerMoveSpeed * (float)deltaTimeSeconds;
-            player.PositionX += dirX * distance;
-            player.PositionZ += dirY * distance;
+            SimulatePlayerVertical(player, deltaTime);
+            SimulatePlayerHorizontal(player, deltaTime);
         }
+    }
+
+    private static void SimulatePlayerVertical(ConnectedPlayer player, float deltaTime)
+    {
+        const float groundEpsilon = 0.01f;
+
+        if (player.PositionY <= NetworkConstants.GroundY + groundEpsilon && player.VerticalVelocity <= 0f)
+        {
+            player.PositionY = NetworkConstants.GroundY;
+            if (player.VerticalVelocity < 0f)
+                player.VerticalVelocity = 0f;
+        }
+
+        if (player.LastInput.JumpPressed
+            && player.PositionY <= NetworkConstants.GroundY + groundEpsilon
+            && player.VerticalVelocity <= 0.01f)
+        {
+            player.VerticalVelocity = NetworkConstants.PlayerJumpSpeed;
+        }
+
+        player.VerticalVelocity += NetworkConstants.PlayerGravity * deltaTime;
+        player.PositionY += player.VerticalVelocity * deltaTime;
+
+        if (player.PositionY < NetworkConstants.GroundY)
+        {
+            player.PositionY = NetworkConstants.GroundY;
+            player.VerticalVelocity = 0f;
+        }
+    }
+
+    private static void SimulatePlayerHorizontal(ConnectedPlayer player, float deltaTime)
+    {
+        var input = player.LastInput;
+        player.RotationYaw = input.LookYaw;
+
+        var dirX = input.MoveDirX;
+        var dirY = input.MoveDirY;
+        var magnitude = MathF.Sqrt(dirX * dirX + dirY * dirY);
+
+        if (magnitude <= 0.0001f)
+            return;
+
+        dirX /= magnitude;
+        dirY /= magnitude;
+
+        // Client mengirim arah gerak sudah dalam world-space (X/Z).
+        var distance = NetworkConstants.PlayerMoveSpeed * deltaTime;
+        player.PositionX += dirX * distance;
+        player.PositionZ += dirY * distance;
     }
 
     public void BroadcastPositions()
@@ -1232,6 +1268,7 @@ public sealed class NetworkServer : INetEventListener
         public float PositionY { get; set; }
         public float PositionZ { get; set; }
         public float RotationYaw { get; set; }
+        public float VerticalVelocity { get; set; }
         public PlayerInput LastInput { get; set; }
     }
 }

@@ -149,7 +149,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5710537472882987125}
-  - {fileID: 6502620807676407300}
+  - {fileID: 7025973630208928893}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!143 &4215168737730839265
@@ -190,6 +190,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Bloomtown.Client::Bloomtown.Client.Player.LocalPlayer
   _moveSpeed: 2
+  _jumpSpeed: 5
   _gravity: -9.81
   _groundDist: 0.1
   _groundMask:
@@ -216,6 +217,9 @@ MonoBehaviour:
   _walkCadenceHz: 0.88
   _designMoveSpeed: 2
   _moveThreshold: 0.08
+  _idleAirbornePhase: 0.14
+  _movingAirbornePhase: 0.2
+  _idleGroundPhase: 0
 --- !u!114 &7480932397358353596
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -229,7 +233,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Bloomtown.Client::Bloomtown.Client.Entity.CharacterCollisionBody
   _radius: 0.3
---- !u!1001 &6752947879765133807
+--- !u!1001 &7353248683336403862
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -302,8 +306,8 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 656a8f22a492cee43b7ee732ee3c5184, type: 3}
---- !u!4 &6502620807676407300 stripped
+--- !u!4 &7025973630208928893 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 656a8f22a492cee43b7ee732ee3c5184, type: 3}
-  m_PrefabInstance: {fileID: 6752947879765133807}
+  m_PrefabInstance: {fileID: 7353248683336403862}
   m_PrefabAsset: {fileID: 0}

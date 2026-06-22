@@ -26,7 +26,8 @@ namespace Bloomtown.Client.Player
         // ── Inspector ───────────────────────────────────────────────────────
         [Header("Movement")]
         [SerializeField] private float _moveSpeed    = NetworkConstants.PlayerMoveSpeed;
-        [SerializeField] private float _gravity      = -9.81f;
+        [SerializeField] private float _jumpSpeed    = NetworkConstants.PlayerJumpSpeed;
+        [SerializeField] private float _gravity      = NetworkConstants.PlayerGravity;
         [SerializeField] private float _groundDist   = 0.1f;
         [SerializeField] private LayerMask _groundMask = ~0;
 
@@ -55,6 +56,7 @@ namespace Bloomtown.Client.Player
         private Vector3 _serverPosition = Vector3.zero;
         private bool    _hasServerPosition;
         private Vector2 _lastMoveDir;
+        private bool    _jumpPending;
         private CharacterAnimator _characterAnimator;
 
         // ── Public API ──────────────────────────────────────────────────────
@@ -89,6 +91,7 @@ namespace Bloomtown.Client.Player
             CharacterCollisionBody.EnsureOn(gameObject);
             _characterAnimator = GetComponent<CharacterAnimator>();
             _characterAnimator?.RebindAnimator();
+            _characterAnimator?.SetLocomotion(0f, 0f, true);
 
             var nameplate = GetComponent<EntityNameplate>() ?? gameObject.AddComponent<EntityNameplate>();
             nameplate.SetStyle(EntityNameplate.Style.LocalPlayer);
@@ -220,14 +223,16 @@ namespace Bloomtown.Client.Player
             // Tanpa _cc.center, dengan center=(0,1,0) height=2 radius=0.3:
             //   Posisi salah: transform.pos + Vector3.down*(1-0.3) = transform.pos - (0,0.7,0)  ← di bawah tanah
             //   Posisi benar: transform.pos + (0,1,0) + Vector3.down*(1-0.3) = transform.pos + (0,0.3,0)  ← tepat di dasar kapsul
-            _grounded = Physics.CheckSphere(
-                transform.position + _cc.center + Vector3.down * (_cc.height * 0.5f - _cc.radius),
-                _groundDist + _cc.radius,
-                _groundMask,
-                QueryTriggerInteraction.Ignore);
+            var groundedBeforeMove = IsGrounded();
 
-            if (_grounded && _verticalVelocity < 0f)
+            if (groundedBeforeMove && _verticalVelocity < 0f)
                 _verticalVelocity = -2f;
+
+            if (groundedBeforeMove && GameInput.WasJumpPressed())
+            {
+                _verticalVelocity = _jumpSpeed;
+                _jumpPending      = true;
+            }
 
             _lastMoveDir = ReadMoveInput();
 
@@ -239,10 +244,32 @@ namespace Bloomtown.Client.Player
 
             _cc.Move(move);
 
-            var animSpeed = _lastMoveDir.sqrMagnitude > 0.01f
-                ? _lastMoveDir.magnitude * _moveSpeed
-                : new Vector3(_cc.velocity.x, 0f, _cc.velocity.z).magnitude;
-            _characterAnimator?.SetLocomotion(animSpeed, Time.deltaTime);
+            _grounded = IsGrounded();
+            var isAirborne = !_grounded || _verticalVelocity > 0.05f;
+
+            var animSpeed = 0f;
+            if (!isAirborne)
+            {
+                animSpeed = _lastMoveDir.sqrMagnitude > 0.01f
+                    ? _lastMoveDir.magnitude * _moveSpeed
+                    : new Vector3(_cc.velocity.x, 0f, _cc.velocity.z).magnitude;
+            }
+            else if (_lastMoveDir.sqrMagnitude > 0.01f)
+            {
+                // Hanya untuk memilih pose lompat (kaki terangkat), bukan menggerakkan siklus Walk.
+                animSpeed = _lastMoveDir.magnitude * _moveSpeed;
+            }
+
+            _characterAnimator?.SetLocomotion(animSpeed, Time.deltaTime, !isAirborne);
+        }
+
+        private bool IsGrounded()
+        {
+            return _cc.isGrounded || Physics.CheckSphere(
+                transform.position + _cc.center + Vector3.down * (_cc.height * 0.5f - _cc.radius),
+                _groundDist + _cc.radius,
+                _groundMask,
+                QueryTriggerInteraction.Ignore);
         }
 
         private static Vector2 ReadMoveInput() => GameInput.ReadMove();
@@ -268,11 +295,13 @@ namespace Bloomtown.Client.Player
 
             var input = new ProtocolPlayerInput
             {
-                Seq      = _inputSeq,
-                MoveDirX = worldDir.x,
-                MoveDirY = worldDir.z,
-                LookYaw  = _yaw,
+                Seq         = _inputSeq,
+                MoveDirX    = worldDir.x,
+                MoveDirY    = worldDir.z,
+                LookYaw     = _yaw,
+                JumpPressed = _jumpPending,
             };
+            _jumpPending = false;
             NetworkClient.Instance.SendPlayerInput(input);
         }
 
@@ -288,8 +317,8 @@ namespace Bloomtown.Client.Player
         {
             if (!_hasServerPosition) return;
 
-            // Jangan tarik posisi saat input gerak aktif — itu penyebab karakter "terseret".
-            if (_lastMoveDir.sqrMagnitude > 0.01f)
+            // Jangan tarik posisi saat bergerak atau di udara — biarkan prediksi lompat client jalan.
+            if (_lastMoveDir.sqrMagnitude > 0.01f || !_grounded)
                 return;
 
             float dist = Vector3.Distance(transform.position, _serverPosition);
@@ -330,6 +359,8 @@ namespace Bloomtown.Client.Player
             var keyboard = Keyboard.current;
             return keyboard != null && keyboard[key].isPressed;
         }
+
+        public static bool WasJumpPressed() => WasPressed(Key.Space);
 
         public static Vector2 ReadMove()
         {

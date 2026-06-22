@@ -11,6 +11,10 @@ public static class NetworkConstants
     /// <summary>Kecepatan jalan santai — cocok dengan cadence animasi Walk Mixamo.</summary>
     public const float PlayerMoveSpeed = 2f;
 
+    public const float GroundY = 0f;
+    public const float PlayerGravity = -9.81f;
+    public const float PlayerJumpSpeed = 5f;
+
     /// <summary>Pusat klaster NPC desa (world X/Z).</summary>
     public const float VillageCenterX = 14f;
     public const float VillageCenterZ = 12f;

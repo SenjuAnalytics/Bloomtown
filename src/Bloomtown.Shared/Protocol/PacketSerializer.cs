@@ -11,6 +11,8 @@ namespace Bloomtown.Shared.Protocol;
 
 public static class PacketSerializer
 {
+    public const int PlayerInputPacketSize = 18;
+
     public static int WritePlayerInput(Span<byte> buffer, PlayerInput input)
     {
         buffer[0] = (byte)PacketType.PlayerInput;
@@ -18,7 +20,8 @@ public static class PacketSerializer
         BinaryPrimitivesCompat.WriteSingleLittleEndian(buffer[5..9], input.MoveDirX);
         BinaryPrimitivesCompat.WriteSingleLittleEndian(buffer[9..13], input.MoveDirY);
         BinaryPrimitivesCompat.WriteSingleLittleEndian(buffer[13..17], input.LookYaw);
-        return 17;
+        buffer[17] = (byte)(input.JumpPressed ? 1 : 0);
+        return PlayerInputPacketSize;
     }
 
     public static PlayerInput ReadPlayerInput(ReadOnlySpan<byte> buffer)
@@ -29,6 +32,7 @@ public static class PacketSerializer
             MoveDirX = BinaryPrimitivesCompat.ReadSingleLittleEndian(buffer[5..9]),
             MoveDirY = BinaryPrimitivesCompat.ReadSingleLittleEndian(buffer[9..13]),
             LookYaw = BinaryPrimitivesCompat.ReadSingleLittleEndian(buffer[13..17]),
+            JumpPressed = buffer.Length > 17 && buffer[17] == 1,
         };
     }
 

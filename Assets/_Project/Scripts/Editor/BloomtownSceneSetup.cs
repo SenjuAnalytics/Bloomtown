@@ -95,7 +95,7 @@ namespace Bloomtown.Client.Editor
                 "1. Jalankan server:\n   dotnet run --project src/Bloomtown.Server\n\n" +
                 "2. Buka scene Bootstrap.unity\n\n" +
                 "3. Tekan Play\n\n" +
-                "Kontrol: WASD gerak, mouse lihat, Esc lepas kursor, Ctrl kunci kursor.\n\n" +
+                "Kontrol: WASD gerak, Space lompat, mouse lihat, Esc lepas kursor, Ctrl kunci kursor.\n\n" +
                 "Model 3D: PlayerModel.fbx + NpcModel.fbx (Mixamo).",
                 "OK");
         }

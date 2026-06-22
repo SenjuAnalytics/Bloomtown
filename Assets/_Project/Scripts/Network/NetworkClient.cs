@@ -39,7 +39,7 @@ namespace Bloomtown.Client.Network
 
         // Pre-allocated buffers — zero alloc per frame
         // Packet paling besar di protokol: ~2100 byte (VillagePosition, MaxVillagePositionMessageBytes=2000)
-        private readonly byte[] _unreliableBuf = new byte[256];   // PlayerInput = 17 bytes
+        private readonly byte[] _unreliableBuf = new byte[256];   // PlayerInput = 18 bytes
         private readonly byte[] _reliableBuf   = new byte[2200];
 
         // ── Public API ──────────────────────────────────────────────────────

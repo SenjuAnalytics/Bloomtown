@@ -9,4 +9,5 @@ public readonly struct PlayerInput
     public float MoveDirX { get; init; }
     public float MoveDirY { get; init; }
     public float LookYaw { get; init; }
+    public bool JumpPressed { get; init; }
 }

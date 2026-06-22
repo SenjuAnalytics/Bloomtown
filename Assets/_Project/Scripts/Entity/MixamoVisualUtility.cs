@@ -42,7 +42,7 @@ namespace Bloomtown.Client.Entity
             pos.y = 0f;
             visual.transform.localPosition = pos;
 
-            var lowestY = GetLowestFootLocalY(visual);
+            var lowestY = GetWalkCycleLowestFootLocalY(visual);
             if (float.IsPositiveInfinity(lowestY) || Mathf.Abs(lowestY) < 0.0005f)
                 return;
 
@@ -51,7 +51,22 @@ namespace Bloomtown.Client.Entity
             visual.transform.localPosition = pos;
         }
 
-        private static float GetLowestFootLocalY(GameObject visual)
+        /// <summary>Sesuaikan offset Y model setiap frame agar kaki terendah menempel lantai pada pose saat ini.</summary>
+        public static void ApplyRuntimeFootGrounding(GameObject visual, Animator animator)
+        {
+            if (visual == null || animator == null)
+                return;
+
+            var lowestY = GetCurrentPoseLowestFootLocalY(visual, animator);
+            if (float.IsPositiveInfinity(lowestY))
+                return;
+
+            var pos = visual.transform.localPosition;
+            pos.y = -lowestY + GroundContactBias;
+            visual.transform.localPosition = pos;
+        }
+
+        private static float GetWalkCycleLowestFootLocalY(GameObject visual)
         {
             var animator = visual.GetComponent<Animator>();
             if (animator != null && animator.runtimeAnimatorController != null)
@@ -61,6 +76,11 @@ namespace Bloomtown.Client.Entity
                     return walkY;
             }
 
+            return GetCurrentPoseLowestFootLocalY(visual, animator);
+        }
+
+        private static float GetCurrentPoseLowestFootLocalY(GameObject visual, Animator animator)
+        {
             if (animator != null && animator.isHuman)
             {
                 var humanoidY = GetHumanoidFootLowestLocalY(animator, visual.transform);

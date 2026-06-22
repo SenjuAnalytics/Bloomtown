@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Bloomtown.Client.Entity
 {
@@ -14,7 +15,15 @@ namespace Bloomtown.Client.Entity
             RemotePlayer,
         }
 
-        private static readonly Vector3 ShadowOffset = new Vector3(0.02f, -0.02f, 0.01f);
+        private static readonly Vector3 ShadowOffset = new Vector3(0.008f, -0.008f, 0.004f);
+
+        private const float BaseTextSize = 0.031f;
+
+        // Semua karakter: membesar sedikit saat jauh agar tetap terbaca di kamera third-person.
+        private const float DistanceScaleNearMeters = 4f;
+        private const float DistanceScaleFarMeters  = 20f;
+        private const float DistanceScaleMin        = 1f;
+        private const float DistanceScaleMax        = 2.3f;
 
         [SerializeField] private Vector3 _localOffset = new Vector3(0f, EntityVisualConstants.NameplateOffsetFeetPivot, 0f);
 
@@ -56,8 +65,18 @@ namespace Bloomtown.Client.Entity
             if (cam == null) return;
 
             var toCamera = _labelRoot.position - cam.transform.position;
-            if (toCamera.sqrMagnitude > 0.0001f)
+            var distance = toCamera.magnitude;
+
+            if (distance > 0.0001f)
                 _labelRoot.rotation = Quaternion.LookRotation(toCamera);
+
+            _labelRoot.localScale = Vector3.one * GetDistanceScale(distance);
+        }
+
+        private static float GetDistanceScale(float distanceFromCamera)
+        {
+            var t = Mathf.InverseLerp(DistanceScaleNearMeters, DistanceScaleFarMeters, distanceFromCamera);
+            return Mathf.Lerp(DistanceScaleMin, DistanceScaleMax, t);
         }
 
         private void EnsureBuilt()
@@ -85,45 +104,74 @@ namespace Bloomtown.Client.Entity
             mesh.anchor = TextAnchor.MiddleCenter;
             mesh.alignment = TextAlignment.Center;
             mesh.font = font;
-            mesh.fontSize = 64;
-            mesh.characterSize = 0.08f;
+            mesh.fontSize = 40;
+            mesh.characterSize = BaseTextSize;
 
             var renderer = go.GetComponent<MeshRenderer>();
-            renderer.sortingOrder = sortingOrder;
+            renderer.sortingOrder      = sortingOrder;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows    = false;
+            ApplyBrightMaterial(renderer, font, Color.white);
 
             return mesh;
         }
 
         private void ApplyStyle()
         {
-            float size;
             Color main;
-            Color shadow = new Color(0f, 0f, 0f, 0.9f);
+            Color shadow = new Color(0f, 0f, 0f, 1f);
             FontStyle fontStyle;
 
             switch (_style)
             {
                 case Style.LocalPlayer:
-                    size      = 0.088f;
-                    main      = new Color(1f, 0.85f, 0.1f);
+                    main      = new Color(1f, 0.96f, 0.35f);
                     fontStyle = FontStyle.Bold;
                     break;
 
                 case Style.RemotePlayer:
-                    size      = 0.09f;
-                    main      = new Color(0.4f, 0.85f, 1f);
+                    main      = new Color(0.65f, 0.98f, 1f);
                     fontStyle = FontStyle.Bold;
                     break;
 
                 default: // Npc
-                    size      = 0.085f;
-                    main      = Color.white;
+                    main      = new Color(1f, 1f, 1f);
                     fontStyle = FontStyle.Normal;
                     break;
             }
 
-            ApplyToMesh(_textMesh, size, main, fontStyle, Vector3.zero);
-            ApplyToMesh(_shadowMesh, size, shadow, fontStyle, ShadowOffset);
+            ApplyToMesh(_textMesh, BaseTextSize, main, fontStyle, Vector3.zero);
+            ApplyToMesh(_shadowMesh, BaseTextSize, shadow, fontStyle, ShadowOffset);
+        }
+
+        private static void ApplyBrightMaterial(MeshRenderer renderer, Font font, Color color)
+        {
+            if (renderer == null)
+                return;
+
+            var shader = Shader.Find("GUI/Text Shader") ?? Shader.Find("Unlit/Color");
+            Material mat;
+
+            if (font != null && font.material != null)
+            {
+                mat = new Material(font.material);
+                if (font.material.mainTexture != null)
+                    mat.mainTexture = font.material.mainTexture;
+            }
+            else if (shader != null)
+            {
+                mat = new Material(shader);
+            }
+            else
+            {
+                return;
+            }
+
+            if (shader != null && mat.shader.name != "GUI/Text Shader")
+                mat.shader = shader;
+
+            SetMaterialColor(mat, color);
+            renderer.material = mat;
         }
 
         private static void ApplyToMesh(TextMesh mesh, float size, Color color, FontStyle fontStyle, Vector3 localPos)
@@ -134,6 +182,17 @@ namespace Bloomtown.Client.Entity
             mesh.characterSize = size;
             mesh.color = color;
             mesh.fontStyle = fontStyle;
+
+            var renderer = mesh.GetComponent<MeshRenderer>();
+            if (renderer != null && renderer.material != null)
+                SetMaterialColor(renderer.material, color);
+        }
+
+        private static void SetMaterialColor(Material mat, Color color)
+        {
+            mat.color = color;
+            if (mat.HasProperty("_Color"))
+                mat.SetColor("_Color", color);
         }
     }
 }

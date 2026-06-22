@@ -10,7 +10,7 @@ namespace Bloomtown.Client.Scripts.Net;
 /// </summary>
 public sealed class NetworkClient
 {
-    private const int PlayerInputPacketSize = 17;
+    private const int PlayerInputPacketSize = PacketSerializer.PlayerInputPacketSize;
 
     private readonly EventBasedNetListener _listener;
     private readonly NetManager _netManager;
