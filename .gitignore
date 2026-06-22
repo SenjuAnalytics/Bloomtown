@@ -24,9 +24,16 @@ UserSettings/
 
 ## Logs
 logs/
+*.log
 
 ## IDE
 .vs/
 .idea/
 *.swp
 .DS_Store
+
+## Temporary files
+agent-tools/*.txt
+agent-tools/*.log
+terminals/
+gambarscrensoot/

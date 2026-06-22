@@ -8,7 +8,16 @@ public static class NetworkConstants
     public const int SimTickRate = 20;
     public const int NetSendRate = 20;
 
-    public const float PlayerMoveSpeed = 5f;
+    /// <summary>Kecepatan jalan santai — cocok dengan cadence animasi Walk Mixamo.</summary>
+    public const float PlayerMoveSpeed = 2f;
+
+    /// <summary>Pusat klaster NPC desa (world X/Z).</summary>
+    public const float VillageCenterX = 14f;
+    public const float VillageCenterZ = 12f;
+
+    public const float DefaultSpawnX = VillageCenterX;
+    public const float DefaultSpawnY = 0f;
+    public const float DefaultSpawnZ = VillageCenterZ;
 
     public const byte ChannelUnreliable = 0;
     public const byte ChannelReliableOrdered = 1;

@@ -213,7 +213,10 @@ public static class PacketSerializer
         BinaryPrimitives.WriteUInt16LittleEndian(buffer[12..14], (ushort)messageBytes.Length);
         messageBytes.CopyTo(buffer[14..]);
 
-        return GatheringResponseHeaderSize + 2 + messageBytes.Length;
+        // FIX: Sebelumnya return GatheringResponseHeaderSize + 2 + messageBytes.Length (kelebihan 2 byte).
+        // Header 14 byte sudah termasuk 2 byte ushort panjang pesan di [12..14],
+        // jadi return yang benar adalah HeaderSize + messageBytes.Length saja.
+        return GatheringResponseHeaderSize + messageBytes.Length;
     }
 
     public static GatheringResponse ReadGatheringResponse(ReadOnlySpan<byte> buffer)
@@ -497,15 +500,7 @@ public static class PacketSerializer
             voteChoice = (ProjectVoteChoice)buffer[offset + 4];
         }
 
-        return new ProjectProposalRequest(
-            kind,
-            projectName,
-            wood,
-            stone,
-            apple,
-            tool,
-            proposalId,
-            voteChoice);
+        return new ProjectProposalRequest(kind, projectName, wood, stone, apple, tool, proposalId, voteChoice);
     }
 
     public static int WriteProjectProposalResponse(Span<byte> buffer, ProjectProposalResponse response)
@@ -798,16 +793,8 @@ public static class PacketSerializer
         var messageLength = BinaryPrimitives.ReadUInt16LittleEndian(buffer[messageOffset..(messageOffset + 2)]);
         var message = Encoding.UTF8.GetString(buffer[(messageOffset + 2)..(messageOffset + 2 + messageLength)]);
 
-        return new GiftResponse(
-            success,
-            npcEntityId,
-            itemType,
-            quantity,
-            affinityGained,
-            newAffinity,
-            failureReason,
-            dialogue,
-            message);
+        return new GiftResponse(success, npcEntityId, itemType, quantity, affinityGained, newAffinity,
+            failureReason, dialogue, message);
     }
 
     public const int NpcAmbientCommentHeaderSize = 7;

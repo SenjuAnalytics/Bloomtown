@@ -1,0 +1,19 @@
+{
+    "name": "Bloomtown.Client",
+    "rootNamespace": "",
+    "references": [
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Bloomtown.Shared.dll",
+        "LiteNetLib.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

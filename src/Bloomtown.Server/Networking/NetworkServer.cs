@@ -283,10 +283,12 @@ public sealed class NetworkServer : INetEventListener
             dirX /= magnitude;
             dirY /= magnitude;
 
+            player.RotationYaw = input.LookYaw;
+
+            // Client mengirim arah gerak sudah dalam world-space (X/Z).
             var distance = NetworkConstants.PlayerMoveSpeed * (float)deltaTimeSeconds;
             player.PositionX += dirX * distance;
             player.PositionZ += dirY * distance;
-            player.RotationYaw = input.LookYaw;
         }
     }
 
@@ -392,9 +394,10 @@ public sealed class NetworkServer : INetEventListener
         else
         {
             entityId = _nextEntityId++;
-            spawnX = (_players.Count % 5) * 2f;
-            spawnY = 0f;
-            spawnZ = (_players.Count / 5) * 2f;
+            var spawnIndex = _players.Count;
+            spawnX = NetworkConstants.DefaultSpawnX + (spawnIndex % 3 - 1) * 2f;
+            spawnY = NetworkConstants.DefaultSpawnY;
+            spawnZ = NetworkConstants.DefaultSpawnZ + spawnIndex / 3 * 2f;
             rotationYaw = 0f;
         }
 
@@ -436,7 +439,7 @@ public sealed class NetworkServer : INetEventListener
         {
             EntityId = entityId,
             SpawnX = spawnX,
-            SpawnY = 0f,
+            SpawnY = spawnY,
             SpawnZ = spawnZ,
         };
         var length = PacketSerializer.WriteConnectAccept(acceptBuffer, accept);
